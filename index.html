@@ -1,45 +1,139 @@
 <!DOCTYPE html>
 <html>
+<head>
+    <title>Hello</title>
+</head>
 <body>
-<button id="start">Start capture</button>
-<button id="stop">Stop capture</button>
-<br>
-<video id="video" autoplay></video>
+    <p>화면캡처 ON 버튼 > 창 > 게임창 선택 후 공유</p>
+    <p>게임창이 다른 창에 가려지면 안보이니, 화면 고정 활성화</p>
+    <video id="video" style="display:none" autoplay></video>
+    <canvas id="canvas"></canvas>
+    <br>
+    <canvas id="imgHP"></canvas>
+    <canvas id="imgMP"></canvas>
 </body>
+<script src="https://cdn.jsdelivr.net/npm/tweakpane@3.0.7/dist/tweakpane.min.js"></script>
+<script
+    src="https://cdn.jsdelivr.net/npm/@tweakpane/plugin-essentials@0.1.4/dist/tweakpane-plugin-essentials.min.js"></script>
 <script>
+    //리니지W 설정-정보-내 캐릭터 정보 숨김 필요
+    
+    const params = {
+        capture: 0,
+        msg: "Hello",
+        hpx: 45,
+        hpy: 16,
+        hpw: 95,
+        hph: 1,
+        mpx: 45,
+        mpy: 23,
+        mpw: 95,
+        mph: 1,
+        hpp: 0,
+        mpp: 0,
+    }
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const canvasHP = document.getElementById("imgHP");
+    const canvasMP = document.getElementById("imgMP");
+    const ctx = canvas.getContext("2d");
+    const ctxHP = canvasHP.getContext("2d");
+    const ctxMP = canvasMP.getContext("2d");
+    canvas.width = 640;
+    canvas.height = 360;
+    canvasHP.width = params.hpw;
+    canvasHP.height = params.hph;
+    canvasMP.width = params.mpw;
+    canvasMP.height = params.mph;
 
-const videoElem = document.getElementById("video");
-const startElem = document.getElementById("start");
-const stopElem = document.getElementById("stop");
 
-var displayMediaOptions = {
-  video: {
-    cursor: "always"
-  },
-  audio: false
-};
+    const startCapture = async () => {
+        const displayMediaOptions = { video: { cursor: "always" }, audio: false };
+        try {
+            video.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+            loop();
+        } catch (err) {
+            console.error("Error: " + err);
+        }
+    }
 
-startElem.addEventListener("click", function(evt) {
-  startCapture();
-}, false);
+    const stopCapture = () => {
+        try {
+            let tracks = video.srcObject.getTracks();
+            tracks.forEach(track => track.stop());
+            video.srcObject = null;
+            setTimeout(() => { ctx.clearRect(0, 0, canvas.width, canvas.height) }, 33);
+        } catch (err) {
+            console.error("Error: " + err);
+        }
+    }
 
-stopElem.addEventListener("click", function(evt) {
-  stopCapture();
-}, false);
+    const imgProcessing = () => {
+        const hpData = ctxHP.getImageData(0, 0, params.hpw, params.hph).data;
+        const hp = [];
+        // R색상만 추출하고, threshold값을 적용한다.
+        for (let i=0; i<hpData.length; i+=4) {
+            const value = (hpData[i] > 210) ? hp.push(255) : hp.push(0);
+        }
+        let hpIndex = hp.reverse().indexOf(255);
+        hpIndex = hpIndex < 0 ? 0 : hpIndex;
+        params.hpp = Math.round((hp.length - hpIndex) / hp.length * 100);
 
-async function startCapture() {
-  try {
-    videoElem.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
-  } catch(err) {
-    console.error("Error: " + err);
-  }
-}
+        const mpData = ctxMP.getImageData(0, 0, params.mpw, params.mph).data;
+        const mp = []
+        // B색상만 추출하고, threshold값을 적용한다.
+        for (let i=0; i<mpData.length; i+=4) {
+            const value = (mpData[i+2] > 110) ? mp.push(255) : mp.push(0);
+            mp.push(value);
+        }
+        let mpIndex = mp.reverse().indexOf(255);
+        mpIndex = mpIndex < 0 ? 0 : mpIndex;
+        params.mpp = Math.round((mp.length - mpIndex) / mp.length * 100);
+        pane.children[1].label = `체력: ${params.hpp}%`;
+        pane.children[2].label = `마나: ${params.mpp}%`;
+    }
 
-function stopCapture(evt) {
-  let tracks = videoElem.srcObject.getTracks();
+    const loop = () => {
+        ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, canvas.width, canvas.height);
+        ctxHP.drawImage(canvas, params.hpx, params.hpy, params.hpw, params.hph, 0, 0, params.hpw,params.hph);
+        ctxMP.drawImage(canvas, params.mpx, params.mpy, params.mpw, params.mph, 0, 0, params.mpw,params.mph);
+        imgProcessing();
+        if (params.capture) setTimeout(loop, 500);
+    }
 
-  tracks.forEach(track => track.stop());
-  videoElem.srcObject = null;
-}
+    const pane = new Tweakpane.Pane({ title: "MANDLOH" });
+    pane.registerPlugin(TweakpaneEssentialsPlugin);
+    pane.addInput(params, "capture", {
+        view: "radiogrid",
+        groupName: "capture",
+        size: [2, 1],
+        cells: x => ({
+            title: (x == 0) ? "ON" : "OFF",
+            value: (x == 0) ? true : false
+        }),
+        label: "화면캡처"
+    }).on("change", ev => {
+        if (ev.value) startCapture();
+        else stopCapture();
+    });
+
+    pane.addMonitor(params, "hpp", {
+        view: "graph",
+        label: "체력:",
+        lineCount: 1,
+        min: 0,
+        max: 100});
+    
+    pane.addMonitor(params, "mpp", {
+        view: "graph",
+        label: "마나:",
+        lineCount: 1,
+        min: 0,
+        max: 100});
+    pane.addButton({ title: "TEST" }).on("click", () => console.log("TEST"));
+    pane.addMonitor(params, "msg", { multiline: true, lineCount: 2 });
+
+
 </script>
+
 </html>
