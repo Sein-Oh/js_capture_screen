@@ -2,17 +2,17 @@
 <html>
 
 <head>
-    <title>Hello</title>
+    <title>리니지W 모니터</title>
 </head>
 
 <body>
+    <div id="container" style="width:300px"></div>
     <p>베타테스트 입니다.</p>
     <p>창 고정 ON</p>
     <p>설정>정보>내 캐릭터 정보 숨김 ON</p>
     <p>캡처시작 > 창 > 게임창 선택 후 공유버튼 클릭</p>
     <p>게임 창을 활성화 하는 기능이 없어서, 가방열기가 안됩니다. 순간이동으로 확인하세요.</p>
     <video id="video" style="display:none" autoplay></video>
-    <canvas id="canvas"></canvas>
 </body>
 <script src="https://cdn.jsdelivr.net/npm/tweakpane@3.0.7/dist/tweakpane.min.js"></script>
 <script
@@ -30,14 +30,18 @@
         mph: 1,
         hpp: 0,
         mpp: 0,
+        info: "앱을 시작합니다.",
+        pause: false,
         arduino: false,
         homeUse: false,
-        homeRange: {min: 0, max: 40},
+        homeRange: { min: 0, max: 40 },
         homeKey: "8",
+        homeKeyCount: 2,
+        homeKeyDelay: 0.2,
         homeCool: 0,
         homeInCool: false,
         tellUse: false,
-        tellRange: {min: 40, max: 60},
+        tellRange: { min: 40, max: 60 },
         tellKey: "7",
         tellCool: 5,
         tellInCool: false,
@@ -46,7 +50,7 @@
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     const video = document.getElementById("video");
-    const canvas = document.getElementById("canvas");
+    const canvas = document.createElement("canvas");
     const canvasHP = document.createElement("canvas");
     const canvasMP = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -59,6 +63,10 @@
     canvasMP.width = params.mpw;
     canvasMP.height = params.mph;
 
+    const pprint = (msg) => {
+        params.info += "\n" + msg;
+    }
+
     const connect = async () => {
         try {
             port = await navigator.serial.requestPort();
@@ -66,6 +74,7 @@
             reader = port.readable.getReader();
             writer = port.writable.getWriter();
             params.arduino = true;
+            pprint("보드가 연결되었습니다.");
         } catch (err) {
             console.error("Error: " + err);
             params.arduino = false;
@@ -73,12 +82,13 @@
     }
 
     const send = (data) => {
-        console.log(data);
+        pprint("Send: " + data);
+        console.log("Send: " + data);
         if (params.arduino) {
             const dataArrayBuffer = encoder.encode(data);
             writer.write(dataArrayBuffer);
         } else {
-            console.log("아두이노가 연결되지 않았습니다");
+            pprint("아두이노를 연결하세요.");
         }
     }
 
@@ -86,6 +96,8 @@
         const displayMediaOptions = { video: { cursor: "always" }, audio: false };
         try {
             video.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+            pprint("캡처를 시작합니다.");
+            pprint(video.srcObject.getTracks()[0].label);
             loop();
         } catch (err) {
             console.error("Error: " + err);
@@ -128,43 +140,68 @@
         pane.children[2].label = `마나: ${params.mpp}%`;
     }
 
+    const saveFile = (content, fileName, contentType) => {
+        var a = document.createElement("a");
+        var file = new Blob([content], { type: contentType });
+        a.href = URL.createObjectURL(file);
+        a.download = fileName;
+        a.click();
+    }
+
     const loop = () => {
         ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, canvas.width, canvas.height);
         ctxHP.drawImage(canvas, params.hpx, params.hpy, params.hpw, params.hph, 0, 0, params.hpw, params.hph);
         ctxMP.drawImage(canvas, params.mpx, params.mpy, params.mpw, params.mph, 0, 0, params.mpw, params.mph);
         imgProcessing();
-        
-        // 귀환
-        if (params.homeUse) {
-            if (params.hpp >= params.homeRange.min && params.hpp <= params.homeRange.max) {
-                send(params.homeKey);
-                params.homeUse = false;
-                pane.refresh();
-            }
-        }
 
-        // 순간이동
-        if (params.tellUse) {
-            if (params.hpp >= params.tellRange.min && params.hpp <= params.tellRange.max && params.tellInCool == false) {
-                send(params.tellKey);
-                params.tellInCool = true;
-                setTimeout(()=>{params.tellInCool = false}, params.tellCool * 1000);
+        if (params.pause == false) {
+            // 귀환
+            if (params.homeUse) {
+                if (params.hpp >= params.homeRange.min && params.hpp <= params.homeRange.max) {
+                    for(let i=1; i<=params.homeKeyCount; i++) {
+                        setTimeout(() => send(params.homeKey), i * params.homeKeyDelay * 1000);
+                    }
+                    if (params.homeCool > 0) {
+                        params.pause = true;
+                        setTimeout(() => {
+                            params.pause = false;
+                            pane.refresh();
+                        }, params.homeCool * 1000);
+                    } else {
+                        params.homeUse = false;
+                    }
+                    pane.refresh();
+                }
+            }
+
+            // 순간이동
+            if (params.tellUse) {
+                if (params.hpp >= params.tellRange.min && params.hpp <= params.tellRange.max && params.tellInCool == false) {
+                    send(params.tellKey);
+                    params.tellInCool = true;
+                    setTimeout(() => { params.tellInCool = false }, params.tellCool * 1000);
+                }
             }
         }
         setTimeout(loop, 500);
     }
 
-    const pane = new Tweakpane.Pane({ title: "MANDLOH" });
+    const pane = new Tweakpane.Pane({ title: "MANDLOH", container: document.getElementById("container") });
     pane.registerPlugin(TweakpaneEssentialsPlugin);
     pane.addBlade({
         view: "buttongrid",
-        size: [2, 1],
+        size: [3, 1],
         cells: (x) => ({
-            title: (x == 0) ? "캡처시작" : "보드연결",
+            title: (x == 0) ? "캡처시작" : (x == 1) ? "보드연결" : "가방열기",
         }),
     }).on("click", (ev) => {
         if (ev.index[0] == 0) startCapture();
-        else connect();
+        else if (ev.index[0] == 1) connect();
+        else {
+            pprint("3초 후 가방을 엽니다.");
+            pprint("게임창을 선택하세요.");
+            setTimeout(() => send("i"), 3000);
+        }
     });
 
     pane.addMonitor(params, "hpp", {
@@ -182,17 +219,50 @@
         min: 0,
         max: 100
     });
+    pane.addMonitor(params, "info", { label: "메시지", multiline: true, lineCount: 3 });
     const settingFolder = pane.addFolder({ title: "설정" });
+    settingFolder.addBlade({
+        view: "buttongrid",
+        size: [2, 1],
+        cells: (x) => ({
+            title: (x == 0) ? "저장하기" : "불러오기",
+        }),
+    }).on("click", (ev) => {
+        if (ev.index[0] == 0) {
+            const preset = pane.exportPreset();
+            saveFile(JSON.stringify(preset), "user.json", "text/plain");
+            pprint("user.json 저장 완료.");
+        }
+        else {
+            const loader = document.createElement("input");
+            loader.type = "file";
+            loader.onchange = (evt) => {
+                const input = evt.target;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const data = reader.result;
+                    pane.importPreset(JSON.parse(data));
+                    pprint("불러오기 완료.");
+                }
+                reader.readAsText(input.files[0]);
+            }
+            loader.click();
+        }
+    });
+    settingFolder.addInput(params, "pause", { label: "일시정지" });
     const homeFolder = settingFolder.addFolder({ title: "자동 귀환" });
     homeFolder.addInput(params, "homeUse", { label: "사용" });
-    homeFolder.addInput(params, "homeRange", {label: "사용구간", min: 0, max: 100, step: 1});
-    homeFolder.addInput(params, "homeKey", {label: "사용 키"})
+    homeFolder.addInput(params, "homeRange", { label: "사용구간", min: 0, max: 100, step: 1 });
+    homeFolder.addInput(params, "homeKey", { label: "사용 키" });
+    homeFolder.addInput(params, "homeCool", { label: "쿨타임" });
+    homeFolder.addInput(params, "homeKeyCount", { label: "반복입력 횟수", step: 1 });
+    homeFolder.addInput(params, "homeKeyDelay", { label: "반복입력 딜레이", step: 0.1 });
 
     const tellFolder = settingFolder.addFolder({ title: "자동 순간이동" });
     tellFolder.addInput(params, "tellUse", { label: "사용" });
-    tellFolder.addInput(params, "tellRange", {label: "사용구간", min: 0, max: 100, step: 1});
-    tellFolder.addInput(params, "tellKey", {label: "사용 키"});
-    tellFolder.addInput(params, "tellCool", {label: "쿨타임"});
+    tellFolder.addInput(params, "tellRange", { label: "사용구간", min: 0, max: 100, step: 1 });
+    tellFolder.addInput(params, "tellKey", { label: "사용 키" });
+    tellFolder.addInput(params, "tellCool", { label: "쿨타임", step: 1 });
 </script>
 
 </html>
