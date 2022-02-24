@@ -3,11 +3,18 @@
 <body>
 <button id="start">Start capture</button>
 <button id="stop">Stop capture</button>
+<button onclick="send()">Send</button>
 <br>
 <video id="video" autoplay></video>
 </body>
 <script>
-
+const ws = new WebSocket("localhost:10025");
+ws.onopen = (evt) => {
+  console.log("connected");
+}
+ws.onmessage = (evt) => {
+  console.log(evt.data);
+}
 const videoElem = document.getElementById("video");
 const startElem = document.getElementById("start");
 const stopElem = document.getElementById("stop");
@@ -40,6 +47,10 @@ function stopCapture(evt) {
 
   tracks.forEach(track => track.stop());
   videoElem.srcObject = null;
+}
+  
+const send = () => {
+  ws.send("HELLO ADDON");
 }
 </script>
 </html>
