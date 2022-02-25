@@ -1,56 +1,46 @@
 <!DOCTYPE html>
 <html>
+
 <body>
-<button id="start">Start capture</button>
-<button id="stop">Stop capture</button>
-<button onclick="send()">Send</button>
-<br>
-<video id="video" autoplay></video>
+  <button onclick="startCapture()">캡처 시작</button>
+  <br>
+  <canvas id="canvas"></canvas>
+  <video id="video" style="display:none" autoplay></video>
 </body>
 <script>
-const ws = new WebSocket("ws://localhost:10025");
-ws.onopen = (evt) => {
-  console.log("connected");
-}
-ws.onmessage = (evt) => {
-  console.log(evt.data);
-}
-const videoElem = document.getElementById("video");
-const startElem = document.getElementById("start");
-const stopElem = document.getElementById("stop");
-
-var displayMediaOptions = {
-  video: {
-    cursor: "always"
-  },
-  audio: false
-};
-
-startElem.addEventListener("click", function(evt) {
-  startCapture();
-}, false);
-
-stopElem.addEventListener("click", function(evt) {
-  stopCapture();
-}, false);
-
-async function startCapture() {
-  try {
-    videoElem.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
-  } catch(err) {
-    console.error("Error: " + err);
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  const ctx = canvas.getContext("2d");
+  const ws = new WebSocket("ws://localhost:10025");
+  ws.onopen = (evt) => {    
+    alert("파이썬과 연결되었습니다.");
   }
-}
+  ws.onclose = (evt) => {
+    alert("연결이 종료되었습니다.");
+  }
 
-function stopCapture(evt) {
-  let tracks = videoElem.srcObject.getTracks();
+  var displayMediaOptions = { video: { cursor: "always" }, audio: false };
 
-  tracks.forEach(track => track.stop());
-  videoElem.srcObject = null;
-}
-  
-const send = () => {
-  ws.send("HELLO ADDON");
-}
+  const startCapture = async () => {
+    try {
+      video.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      loop();
+    } catch (err) {
+      console.error("Error: " + err);
+    }
+  }
+
+  const loop = () => {
+    ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, canvas.width, canvas.height);
+    if (ws.readyState == 1) {
+      const rawData = canvas.toDataURL("image/jpeg", 1);
+      ws.send(rawData);
+    }
+    setTimeout(loop, 100);
+  }
+
 </script>
+
 </html>
